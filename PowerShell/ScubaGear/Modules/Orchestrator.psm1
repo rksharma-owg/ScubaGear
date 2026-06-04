@@ -141,13 +141,19 @@ function Invoke-SCuBA {
         [Parameter(Mandatory = $false, ParameterSetName = 'Report')]
         [ValidateNotNullOrEmpty()]
         # Both defender and securitysuite are options, as defender is an alias for securitysuite
-        [ValidateSet("teams", "exo", "defender", "securitysuite", "aad", "powerplatform", "sharepoint", "powerbi", '*', IgnoreCase = $false)]
+        [ValidateScript({
+            $valid = [ScubaConfig]::GetAllValidProductNames()
+            $_ | ForEach-Object {
+                if ($_ -notin $valid) { throw "Invalid ProductName '$_'. Valid values: $($valid -join ', ')" }
+            }
+            $true
+        })]
         [string[]]
         $ProductNames = [ScubaConfig]::ScubaDefault('DefaultProductNames'),
 
         [Parameter(Mandatory = $false, ParameterSetName = 'Configuration')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Report')]
-        [ValidateSet("commercial", "gcc", "gcchigh", "dod", IgnoreCase = $false)]
+        [ValidateScript({ $_ -in [ScubaConfig]::GetSupportedEnvironments() })]
         [ValidateNotNullOrEmpty()]
         [string]
         $M365Environment = [ScubaConfig]::ScubaDefault('DefaultM365Environment'),
@@ -731,27 +737,7 @@ function Invoke-SCuBA {
     }
 }
 
-$ArgToProd = @{
-    teams = "Teams";
-    exo = "EXO";
-    securitysuite = "SecuritySuite";
-    aad = "AAD";
-    powerplatform = "PowerPlatform";
-    sharepoint = "SharePoint";
-    powerbi = "PowerBI";
-}
-
-$ProdToFullName = @{
-    Teams = "Microsoft Teams";
-    EXO = "Exchange Online";
-    SecuritySuite = "Security Suite";
-    AAD = "Azure Active Directory";
-    PowerPlatform = "Microsoft Power Platform";
-    SharePoint = "SharePoint Online";
-    PowerBI = "Microsoft Power BI";
-}
-
-$IndividualReportFolderName = "IndividualReports"
+$IndividualReportFolderName = [ScubaConfig]::ScubaDefault('DefaultIndividualReportFolderName')
 
 function Get-FileEncoding{
     <#
@@ -831,7 +817,7 @@ function Invoke-ProviderList {
             }
 
             foreach ($Product in $ScubaConfig.ProductNames) {
-                $BaselineName = $ArgToProd[$Product]
+                $BaselineName = [ScubaConfig]::GetProductBaselineName($Product)
                 $N += 1
                 $Percent = $N * 100 / $Len
                 $Status = "Running the $($BaselineName) Provider; $($N) of $($Len) Product settings extracted"
@@ -999,7 +985,7 @@ function Invoke-RunRego {
             $N = 0
             $Len = $ScubaConfig.ProductNames.Length
             foreach ($Product in $ScubaConfig.ProductNames) {
-                $BaselineName = $ArgToProd[$Product]
+                $BaselineName = [ScubaConfig]::GetProductBaselineName($Product)
                 $N += 1
                 $Percent = $N * 100 / $Len
 
@@ -1207,7 +1193,6 @@ function ConvertTo-ResultsCsv {
     param(
         [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
-        [ValidateSet("teams", "exo", "securitysuite", "aad", "powerplatform", "sharepoint", "powerbi", '*', IgnoreCase = $false)]
         [string[]]
         $ProductNames,
 
@@ -1245,7 +1230,7 @@ function ConvertTo-ResultsCsv {
                 $ScubaResults = @{"Results" = [PSCustomObject]@{}}
                 $IndividualReportPath = Join-Path -Path $OutFolderPath $IndividualReportFolderName -ErrorAction 'Stop'
                 foreach ($Product in $ProductNames) {
-                    $BaselineName = $ArgToProd[$Product]
+                    $BaselineName = [ScubaConfig]::GetProductBaselineName($Product)
                     $FileName = Join-Path $IndividualReportPath "$($BaselineName)Report.json"
                     $IndividualResults = Get-Content -Encoding UTF8 $FileName | ConvertFrom-Json
                     $ScubaResults.Results | Add-Member -NotePropertyName $BaselineName `
@@ -1313,7 +1298,6 @@ function Merge-JsonOutput {
     param(
         [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
-        [ValidateSet("teams", "exo", "securitysuite", "aad", "powerplatform", "sharepoint", "powerbi", '*', IgnoreCase = $false)]
         [string[]]
         $ProductNames,
 
@@ -1367,9 +1351,10 @@ function Merge-JsonOutput {
             $FullNames = @()
             $ProductAbbreviationMapping = @{}
             foreach ($ProductName in $ProductNames) {
-                $BaselineName = $ArgToProd[$ProductName]
-                $FullNames += $ProdToFullName[$BaselineName]
-                $ProductAbbreviationMapping[$ProdToFullName[$BaselineName]] = $BaselineName
+                $BaselineName = [ScubaConfig]::GetProductBaselineName($ProductName)
+                $DisplayName = [ScubaConfig]::GetDisplayNameFromBaselineName($BaselineName)
+                $FullNames += $DisplayName
+                $ProductAbbreviationMapping[$DisplayName] = $BaselineName
             }
 
             $Results = [pscustomobject]@{}
@@ -1396,7 +1381,7 @@ function Merge-JsonOutput {
             $IndividualReportPath = Join-Path -Path $OutFolderPath $IndividualReportFolderName -ErrorAction 'Stop'
             $FailsNotAnnotated = @()
             foreach ($Product in $ProductNames) {
-                $BaselineName = $ArgToProd[$Product]
+                $BaselineName = [ScubaConfig]::GetProductBaselineName($Product)
                 $FileName = Join-Path $IndividualReportPath "$($BaselineName)Report.json"
                 $DeletionList += $FileName
                 $IndividualResults = Get-Content -Encoding UTF8 $FileName | ConvertFrom-Json
@@ -1550,7 +1535,7 @@ function Invoke-ReportCreation {
             $SecureBaselines =  Import-SecureBaseline -ProductNames $ScubaConfig.ProductNames
 
             foreach ($Product in $ScubaConfig.ProductNames) {
-                $BaselineName = $ArgToProd[$Product]
+                $BaselineName = [ScubaConfig]::GetProductBaselineName($Product)
                 $N += 1
                 $Percent = $N*100/$Len
                 $Status = "Running the $($BaselineName) Report creation; $($N) of $($Len) Baselines Reports created";
@@ -1563,11 +1548,10 @@ function Invoke-ReportCreation {
                 }
                 Write-Progress @ProgressParams
 
-                $FullName = $ProdToFullName[$BaselineName]
+                $FullName = [ScubaConfig]::GetDisplayNameFromBaselineName($BaselineName)
 
                 $CreateReportParams = @{
                     'BaselineName' = $BaselineName;
-                    'FullName' = $FullName;
                     'IndividualReportPath' = $IndividualReportPath;
                     'OutPath' = $OutFolderPath;
                     'OutProviderFileName' = $ScubaConfig.OutProviderFileName;
@@ -1714,13 +1698,11 @@ function Get-TenantDetail {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true)]
-        [ValidateSet("teams", "exo", "securitysuite", "aad", "powerplatform", "sharepoint", "powerbi", IgnoreCase = $false)]
         [ValidateNotNullOrEmpty()]
         [string[]]
         $ProductNames,
 
         [Parameter(Mandatory = $true)]
-        [ValidateSet("commercial", "gcc", "gcchigh", "dod", IgnoreCase = $false)]
         [ValidateNotNullOrEmpty()]
         [string]
         $M365Environment,
@@ -1828,13 +1810,11 @@ function Compare-ProductList {
 
         [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
-        [ValidateSet("teams", "exo", "securitysuite", "aad", "powerplatform", "sharepoint", "powerbi", '*', IgnoreCase = $false)]
         [string[]]
         $ProductNames,
 
         [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
-        [ValidateSet("teams", "exo", "securitysuite", "aad", "powerplatform", "sharepoint", "powerbi", '*', IgnoreCase = $false)]
         [string[]]
         $ProductsFailed,
 
@@ -2055,12 +2035,18 @@ function Invoke-SCuBACached {
 
         [Parameter(Mandatory = $false, ParameterSetName = 'Report')]
         [ValidateNotNullOrEmpty()]
-        [ValidateSet("teams", "exo", "securitysuite", "aad", "powerplatform", "sharepoint", "powerbi", '*', IgnoreCase = $false)]
+        [ValidateScript({
+            $valid = [ScubaConfig]::GetAllValidProductNames()
+            $_ | ForEach-Object {
+                if ($_ -notin $valid) { throw "Invalid ProductName '$_'. Valid values: $($valid -join ', ')" }
+            }
+            $true
+        })]
         [string[]]
         $ProductNames = [ScubaConfig]::ScubaDefault('DefaultProductNames'),
 
         [Parameter(Mandatory = $false, ParameterSetName = 'Report')]
-        [ValidateSet("commercial", "gcc", "gcchigh", "dod")]
+        [ValidateScript({ $_ -in [ScubaConfig]::GetSupportedEnvironments() })]
         [ValidateNotNullOrEmpty()]
         [string]
         $M365Environment = [ScubaConfig]::ScubaDefault('DefaultM365Environment'),
