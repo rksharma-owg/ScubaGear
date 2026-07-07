@@ -969,28 +969,50 @@ function Test-ScubaGearVersion {
         Compares the installed ScubaGear version with the latest available version from PSGallery or GitHub.
         Also checks dependency status and provides detailed information about modules with multiple versions.
 
+        By default, displays a concise summary. Use -PassThru to return the full structured objects.
+
     .PARAMETER CheckGitHub
         Also check GitHub releases for the latest version.
 
+    .PARAMETER SkipVersionCheck
+        Skip the PSGallery version check (the internet call). Only run the local dependency check.
+        Used during module import when SCUBAGEAR_SKIP_VERSION_CHECK is set.
+
+    .PARAMETER PassThru
+        Return the full structured PSCustomObject results instead of a concise summary.
+        Useful for scripting or detailed diagnostics.
+
     .OUTPUTS
-        PSCustomObject
+        PSCustomObject (when -PassThru is used)
+        String (default concise summary)
 
     .EXAMPLE
         Test-ScubaGearVersion
 
     .EXAMPLE
+        Test-ScubaGearVersion -PassThru
+
+    .EXAMPLE
         Test-ScubaGearVersion -CheckGitHub
+
+    .EXAMPLE
+        Test-ScubaGearVersion -SkipVersionCheck
 
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [switch]$CheckGitHub
+        [switch]$CheckGitHub,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipVersionCheck,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$PassThru
     )
 
     try {
         $modules = Get-Module ScubaGear -ListAvailable -ErrorAction SilentlyContinue
-        $latest = Find-Module -Name ScubaGear -Repository PSGallery -ErrorAction SilentlyContinue
 
         # ScubaGear Status Object
         $scubaGearStatus = [PSCustomObject]@{
@@ -1003,11 +1025,18 @@ function Test-ScubaGearVersion {
             Recommendations = @()
         }
 
-        if (-not $latest) {
-            $scubaGearStatus.Status = "Unable to check latest version"
-            $scubaGearStatus.Recommendations += "Check internet connection and PSGallery access. "
+        if (-not $SkipVersionCheck) {
+            $latest = Find-Module -Name ScubaGear -Repository PSGallery -ErrorAction SilentlyContinue
+
+            if (-not $latest) {
+                $scubaGearStatus.Status = "Unable to check latest version"
+                $scubaGearStatus.Recommendations += "Check internet connection and PSGallery access. "
+            } else {
+                $scubaGearStatus.LatestVersion = [version]$latest.Version
+            }
         } else {
-            $scubaGearStatus.LatestVersion = [version]$latest.Version
+            $scubaGearStatus.Status = "Version check skipped"
+            $scubaGearStatus.Recommendations += "Version check skipped. Run 'Test-ScubaGearVersion' for full check. "
         }
 
         if (-not $modules) {
@@ -1082,77 +1111,102 @@ function Test-ScubaGearVersion {
             Recommendations = $dependencyStatus.Recommendations -join "; "
         }
 
-        # Output structured results first
         $results += $scubaGearStatus
         $results += $dependencyComponent
-        Write-Output $results
 
-        # Display formatted Details section if there are any issues
-        if ($dependencyStatus.Missing.Count -gt 0 -or $dependencyStatus.ModuleFileLocations.Count -gt 0) {
-            # Separate modules into critical (version outside range) vs cleanup (all versions OK)
-            $criticalModules = @()
-            $cleanupModules = @()
+        if ($PassThru) {
+            # -PassThru: return structured objects only, no text output
+            Write-Output $results
+        }
+        else {
+            # Default: human-readable summary and details, no object output
 
-            # Process missing modules (critical)
-            if($dependencyStatus.Missing.count -gt 0){
-                foreach ($missingModule in $dependencyStatus.Missing) {
-                    $criticalModules += [PSCustomObject]@{
-                        ModuleName = $missingModule
-                        HighestVersion = $null
-                        HighestStatus = "MISSING"
-                        VersionCount = 0
+            # ScubaGear version status
+            if ($scubaGearStatus.Status -eq "Version check skipped") {
+                Write-Information "ScubaGear $($scubaGearStatus.CurrentVersion) - version check skipped" -InformationAction Continue
+            }
+            elseif ($scubaGearStatus.Status -eq "Up to Date") {
+                Write-Information "ScubaGear $($scubaGearStatus.CurrentVersion) is up to date." -InformationAction Continue
+            }
+            elseif ($scubaGearStatus.Status -eq "Update Available") {
+                Write-Warning "ScubaGear $($scubaGearStatus.CurrentVersion) -> $($scubaGearStatus.LatestVersion) update available. Run 'Update-ScubaGear' to update."
+            }
+            elseif ($scubaGearStatus.Status -eq "Needs attention") {
+                Write-Warning "ScubaGear has $($modules.Count) versions installed. Run 'Update-ScubaGear' to clean up."
+            }
+            elseif ($scubaGearStatus.Status -eq "Newer Version Available on GitHub") {
+                Write-Warning "ScubaGear $($scubaGearStatus.CurrentVersion) -> $($scubaGearStatus.LatestVersion) available on GitHub. Consider updating."
+            }
+            elseif ($scubaGearStatus.Status -eq "Not Installed") {
+                Write-Warning "ScubaGear is not installed. Run 'Install-Module ScubaGear' to install."
+            }
+
+            # Dependencies status
+            if ($dependencyStatus.Status -eq "OK") {
+                Write-Information "Dependencies ($($dependencyStatus.Installed)/$($dependencyStatus.TotalRequired)) are up to date." -InformationAction Continue
+            }
+
+            # Display formatted Details section if there are any issues
+            if ($dependencyStatus.Missing.Count -gt 0 -or $dependencyStatus.ModuleFileLocations.Count -gt 0) {
+                # Separate modules into critical (version outside range) vs cleanup (all versions OK)
+                $criticalModules = @()
+                $cleanupModules = @()
+
+                # Process missing modules (critical)
+                if($dependencyStatus.Missing.count -gt 0){
+                    foreach ($missingModule in $dependencyStatus.Missing) {
+                        $criticalModules += [PSCustomObject]@{
+                            ModuleName = $missingModule
+                            HighestVersion = $null
+                            HighestStatus = "MISSING"
+                            VersionCount = 0
+                        }
                     }
                 }
-            }
 
-            # Process installed modules with version issues or multiple versions
-            foreach ($moduleInfo in $dependencyStatus.ModuleFileLocations) {
-                # Check if highest version (what PowerShell will load) is acceptable
-                if ($moduleInfo.HighestVersionStatus -ne "OK") {
-                    # Highest version is out of range - CRITICAL
-                    $criticalModules += [PSCustomObject]@{
-                        ModuleName = $moduleInfo.ModuleName
-                        HighestVersion = $moduleInfo.HighestVersion
-                        HighestStatus = $moduleInfo.HighestVersionStatus
-                        VersionCount = $moduleInfo.VersionCount
+                # Process installed modules with version issues or multiple versions
+                foreach ($moduleInfo in $dependencyStatus.ModuleFileLocations) {
+                    if ($moduleInfo.HighestVersionStatus -ne "OK") {
+                        $criticalModules += [PSCustomObject]@{
+                            ModuleName = $moduleInfo.ModuleName
+                            HighestVersion = $moduleInfo.HighestVersion
+                            HighestStatus = $moduleInfo.HighestVersionStatus
+                            VersionCount = $moduleInfo.VersionCount
+                        }
+                    }
+                    else {
+                        $cleanupModules += [PSCustomObject]@{
+                            ModuleName = $moduleInfo.ModuleName
+                            HighestVersion = $moduleInfo.HighestVersion
+                            VersionCount = $moduleInfo.VersionCount
+                        }
                     }
                 }
-                else {
-                    # Highest version is OK but multiple versions exist - CLEANUP
-                    $cleanupModules += [PSCustomObject]@{
-                        ModuleName = $moduleInfo.ModuleName
-                        HighestVersion = $moduleInfo.HighestVersion
-                        VersionCount = $moduleInfo.VersionCount
+
+                # Details section
+                Write-Information "Details:" -InformationAction Continue
+
+                foreach ($module in $criticalModules) {
+                    if ($module.HighestStatus -eq "MISSING") {
+                        Write-Information "  CRITICAL: $($module.ModuleName) - not installed" -InformationAction Continue
+                    }
+                    else {
+                        Write-Information "  CRITICAL: $($module.ModuleName) - will load $($module.HighestVersion) [$($module.HighestStatus)]" -InformationAction Continue
                     }
                 }
-            }
 
-            # Details section
-            Write-Information "Details:" -InformationAction Continue
-
-            # Display critical issues first (missing modules or highest version out of range)
-            foreach ($module in $criticalModules) {
-                if ($module.HighestStatus -eq "MISSING") {
-                    Write-Information "  CRITICAL: $($module.ModuleName) - not installed" -InformationAction Continue
+                foreach ($module in $cleanupModules) {
+                    Write-Information "  Cleanup Recommended: $($module.ModuleName) - will load $($module.HighestVersion) [OK] ($($module.VersionCount) versions installed)" -InformationAction Continue
                 }
-                else {
-                    Write-Information "  CRITICAL: $($module.ModuleName) - will load $($module.HighestVersion) [$($module.HighestStatus)]" -InformationAction Continue
-                }
-            }
 
-            # Display cleanup recommendations (highest version OK but multiple exist)
-            foreach ($module in $cleanupModules) {
-                Write-Information "  Cleanup Recommended: $($module.ModuleName) - will load $($module.HighestVersion) [OK] ($($module.VersionCount) versions installed)" -InformationAction Continue
-            }
-
-            Write-Information "" -InformationAction Continue
-
-            # If missing modules suggest Initialize-SCuBA otherwise suggest Reset-ScubaGearDependencies
-            if ($criticalModules.HighestStatus -eq "MISSING" -and -not $dependencyStatus.ModuleFileLocations) {
-                Write-Information "Run 'Initialize-SCuBA' to install missing modules." -InformationAction Continue
-            }else{
-                Write-Information "Run 'Reset-ScubaGearDependencies' to fix." -InformationAction Continue
                 Write-Information "" -InformationAction Continue
+
+                if ($criticalModules.HighestStatus -eq "MISSING" -and -not $dependencyStatus.ModuleFileLocations) {
+                    Write-Information "Run 'Initialize-SCuBA' to install missing modules." -InformationAction Continue
+                }else{
+                    Write-Information "Run 'Reset-ScubaGearDependencies' to fix." -InformationAction Continue
+                    Write-Information "" -InformationAction Continue
+                }
             }
         }
     }
@@ -2000,5 +2054,6 @@ Export-ModuleMember -Function @(
     'New-SCuBAConfig',
     'Update-ScubaGear',
     'Test-ScubaGearVersion',
+    'Get-DependencyStatus',
     'Reset-ScubaGearDependencies'
 )
