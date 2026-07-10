@@ -770,25 +770,6 @@ TestPlan:
             Splat:
               PropertyName: State
               Value: "Disabled"
-                securitysuite_successful_commands:
-                  - Get-MgBetaSubscribedSku
-                  - Get-AdminAuditLogConfig
-                  - Get-EOPProtectionPolicyRule
-                  - Get-AntiPhishPolicy
-                  - Get-AntiPhishRule
-                  - Get-AcceptedDomain
-                  - Get-HostedConnectionFilterPolicy
-                  - Get-SafeLinksPolicy
-                  - Get-SafeLinksRule
-                  - Get-HostedContentFilterPolicy
-                  - Get-HostedContentFilterRule
-                  - Get-AtpPolicyForO365
-                  - Get-ATPProtectionPolicyRule
-                  - Get-DlpCompliancePolicy
-                  - Get-DlpComplianceRule
-                  - Get-ProtectionAlert
-                  - Get-UnifiedAuditLogRetentionPolicy
-                securitysuite_unsuccessful_commands: []
         Postconditions: []
         ExpectedResult: false
       - TestDescription: MS.SECURITYSUITE.6.1v1 Non-Compliant case - All policies have HighConfidenceSpamAction set to AddXHeader
@@ -801,25 +782,6 @@ TestPlan:
             Splat:
               PropertyName: State
               Value: "Disabled"
-                securitysuite_successful_commands:
-                  - Get-MgBetaSubscribedSku
-                  - Get-AdminAuditLogConfig
-                  - Get-EOPProtectionPolicyRule
-                  - Get-AntiPhishPolicy
-                  - Get-AntiPhishRule
-                  - Get-AcceptedDomain
-                  - Get-HostedConnectionFilterPolicy
-                  - Get-SafeLinksPolicy
-                  - Get-SafeLinksRule
-                  - Get-HostedContentFilterPolicy
-                  - Get-HostedContentFilterRule
-                  - Get-AtpPolicyForO365
-                  - Get-ATPProtectionPolicyRule
-                  - Get-DlpCompliancePolicy
-                  - Get-DlpComplianceRule
-                  - Get-ProtectionAlert
-                  - Get-UnifiedAuditLogRetentionPolicy
-                securitysuite_unsuccessful_commands: []
         Postconditions: []
         ExpectedResult: false
       - TestDescription: MS.SECURITYSUITE.6.1v1 Non-Compliant case - All policies have PhishSpamAction set to AddXHeader
