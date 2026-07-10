@@ -1,12 +1,9 @@
-# Not sure what tests we'll need specific to G5, just leaving this here for now as a placeholder.
-# Revisit this as we implement the Security Suite Rego.
-
 ProductName: securitysuite
 TestPlan:
   - PolicyId: MS.SECURITYSUITE.1.1v1
     TestDriver: ScubaCached
     Tests:
-      - TestDescription: MS.SECURITYSUITE.1.1v1 Not Checked # TODO update once implemented
+      - TestDescription: MS.SECURITYSUITE.1.1v1 Not Checked
         Preconditions: []
         Postconditions: []
         IsNotChecked: true
@@ -60,7 +57,6 @@ TestPlan:
         Postconditions: []
         IsNotChecked: true
         ExpectedResult: true
-
   - PolicyId: MS.SECURITYSUITE.5.2v1
     TestDriver: ScubaCached
     Tests:
