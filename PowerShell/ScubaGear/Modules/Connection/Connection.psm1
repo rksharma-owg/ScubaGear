@@ -173,7 +173,14 @@ function Connect-Tenant {
                            Write-Verbose "Compliance token and endpoint acquired successfully"
                        }
                        catch {
-                           Write-Warning "Failed to acquire Security & Compliance token: $($_.Exception.Message). IPPS cmdlets will be unavailable."
+                           Write-Warning "Failed to acquire dedicated Security & Compliance token: $($_.Exception.Message). Falling back to EXO token for compliance endpoint."
+                           # Fallback: use EXO token against compliance endpoint.
+                           # ExchangeOnlineManagement uses Exchange.ManageAsApp for both EXO and IPPS,
+                           # and the compliance endpoint may accept EXO-scoped tokens for service principals.
+                           $TokenData.ComplianceAccessToken = $TokenData.EXOAccessToken
+                           $TokenData.ComplianceApiEndpoint = Get-ComplianceApiEndpoint `
+                               -TenantId $TenantId `
+                               -M365Environment $M365Environment
                        }
 
                        $EXOAuthRequired = $false
