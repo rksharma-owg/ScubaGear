@@ -85,28 +85,35 @@ function Export-SecuritySuiteProvider {
             [bool]$SuppressWarning = $false
         )
 
-        if (-not $HasComplianceEndpoint) {
-            if (-not $SuppressWarning) {
-                Write-Warning "Compliance endpoint not available. Skipping ${CmdletName}."
+        # Try compliance endpoint first, then fall back to EXO endpoint.
+        # GCCHigh: compliance endpoint works (EXO returns 403 for IPPS cmdlets)
+        # Commercial/GCC: EXO endpoint works (compliance rejects EXO-scoped tokens)
+        $Endpoints = @()
+        if ($HasComplianceEndpoint) {
+            $Endpoints += @{ Token = $ComplianceAccessToken; Endpoint = $ComplianceApiEndpoint }
+        }
+        $Endpoints += @{ Token = $AccessToken; Endpoint = $ApiEndpoint }
+
+        foreach ($ep in $Endpoints) {
+            try {
+                $Result = Trace-ScubaFunction -FunctionName $CmdletName -LogErrors $false -ScriptBlock {
+                    Invoke-EXORestMethod -CmdletName $CmdletName -ApiEndpoint $ep.Endpoint -AccessToken $ep.Token
+                }
+                $Tracker.AddSuccessfulCommand($CmdletName)
+                return @($Result)
             }
-            $Tracker.AddUnSuccessfulCommand($CmdletName)
-            return @()
+            catch {
+                # Try next endpoint
+                continue
+            }
         }
 
-        try {
-            $Result = Trace-ScubaFunction -FunctionName $CmdletName -LogErrors $false -ScriptBlock {
-                Invoke-EXORestMethod -CmdletName $CmdletName -ApiEndpoint $ComplianceApiEndpoint -AccessToken $ComplianceAccessToken
-            }
-            $Tracker.AddSuccessfulCommand($CmdletName)
-            return @($Result)
+        # All endpoints failed
+        if (-not $SuppressWarning) {
+            Write-Warning "Error running ${CmdletName}: all endpoints failed."
         }
-        catch {
-            if (-not $SuppressWarning) {
-                Write-Warning "Error running ${CmdletName}: $($_.Exception.Message)"
-            }
-            $Tracker.AddUnSuccessfulCommand($CmdletName)
-            return @()
-        }
+        $Tracker.AddUnSuccessfulCommand($CmdletName)
+        return @()
     }
 
 
