@@ -26,6 +26,63 @@ function Get-ExchangeOnlineScope {
     return $Scope
 }
 
+function Get-ComplianceScope {
+    <#
+    .SYNOPSIS
+        Returns the OAuth2 scope for Security & Compliance based on M365 environment.
+    .PARAMETER M365Environment
+        The M365 environment (commercial, gcc, gcchigh, dod).
+    .FUNCTIONALITY
+        Internal
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("commercial", "gcc", "gcchigh", "dod")]
+        [string]$M365Environment
+    )
+
+    $Scope = switch ($M365Environment.ToLower()) {
+        "commercial" { "https://ps.compliance.protection.outlook.com/.default" }
+        "gcc"        { "https://ps.compliance.protection.outlook.com/.default" }
+        "gcchigh"    { "https://ps.compliance.protection.office365.us/.default" }
+        "dod"        { "https://ps.compliance.protection.office365.us/.default" }
+    }
+
+    return $Scope
+}
+
+function Get-ComplianceApiEndpoint {
+    <#
+    .SYNOPSIS
+        Returns the Security & Compliance Admin API InvokeCommand endpoint URI.
+    .PARAMETER TenantId
+        The Azure AD tenant ID.
+    .PARAMETER M365Environment
+        The M365 environment (commercial, gcc, gcchigh, dod).
+    .FUNCTIONALITY
+        Internal
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TenantId,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("commercial", "gcc", "gcchigh", "dod")]
+        [string]$M365Environment
+    )
+
+    $BaseUri = switch ($M365Environment.ToLower()) {
+        "commercial" { "https://ps.compliance.protection.outlook.com" }
+        "gcc"        { "https://ps.compliance.protection.outlook.com" }
+        "gcchigh"    { "https://ps.compliance.protection.office365.us" }
+        "dod"        { "https://ps.compliance.protection.office365.us" }
+    }
+
+    return "$BaseUri/adminapi/beta/$TenantId/InvokeCommand"
+}
+
 function Get-ExchangeOnlineApiEndpoint {
     <#
     .SYNOPSIS
@@ -196,5 +253,7 @@ function Invoke-EXORestMethod {
 Export-ModuleMember -Function @(
     'Get-ExchangeOnlineScope',
     'Get-ExchangeOnlineApiEndpoint',
+    'Get-ComplianceScope',
+    'Get-ComplianceApiEndpoint',
     'Invoke-EXORestMethod'
 )
